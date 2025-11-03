@@ -118,11 +118,12 @@ class LogicGates(object):
         return inputs
 
 class HyperParameters:
-    def __init__(self, T, D, H, L, bs, lr=1e-3):
+    def __init__(self, T, D, H, L, tu=0, bs=2048, lr=1e-3):
         self.T = T  # Number of input and output features
         self.D = D  # Hidden dimension
         self.H = H  # Hidden layer dimension
         self.L = L  # Number of residual blocks
+        self.tu = tu  # Target uncertainty
         self.bs = bs  # Batch size
         self.lr = lr  # Learning rate
 
@@ -160,7 +161,10 @@ class Trainer:
             for _ in range(steps):
                 inputs = self.gates.generate_input_data_cuda(self.hp.bs)
                 targets = self.gates.forward_cuda(inputs).float()
+                
                 inputs = inputs.float()
+                if self.hp.tu != 0:
+                    targets = targets * (1 - 2*self.hp.tu) + self.hp.tu
 
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs.T)
