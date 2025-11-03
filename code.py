@@ -293,3 +293,5 @@ b_2_out = net.hidden_layers[1].layer[2].bias.data
 b_out = net.output_layer.bias.data
 
 
+
+# %%
