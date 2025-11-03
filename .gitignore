@@ -3,6 +3,7 @@ wandb/
 
 # Test outputs and model checkpoints
 Test/
+With target uncertainty/
 *.pt
 *.pth
 *.ckpt
