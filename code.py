@@ -57,8 +57,9 @@ class ResNet(nn.Module):
     
 
 class LogicGates(object):
-    def __init__(self, T):
+    def __init__(self, T, gtype='mixed'):
         self.T = T
+        self.gtype = gtype
 
         self.first_inputs = torch.arange(T)
         self.second_inputs = (self.first_inputs + torch.randint(1, T-1, (T,))) % T
@@ -66,9 +67,14 @@ class LogicGates(object):
         self.connections = torch.eye(T, dtype=torch.int32) #Add first input connections
         self.connections[torch.arange(T), self.second_inputs] = 1 #Add second input connections
 
-        self.and_indices = torch.arange(T//3)
-        self.or_indices = torch.arange(T//3, 2*T//3)
-        self.xor_indices = torch.arange(2*T//3, T)
+        if gtype == 'mixed':
+            self.and_indices = torch.arange(T//3)
+            self.or_indices = torch.arange(T//3, 2*T//3)
+            self.xor_indices = torch.arange(2*T//3, T)
+        elif gtype == 'and':
+            self.and_indices = torch.arange(T)
+            self.or_indices = torch.tensor([], dtype=torch.int64)
+            self.xor_indices = torch.tensor([], dtype=torch.int64)
 
         self.connections_cuda = self.connections.float()
 
@@ -103,7 +109,6 @@ class LogicGates(object):
 
         return inputs
     
-
     def generate_input_data_cuda(self, batch_size):
         inputs = torch.zeros((self.T, batch_size))
 
@@ -225,11 +230,11 @@ save(trainer_l)
 # %%
 test_hp = HyperParameters(T=128, D=64, H=64, L=2, bs=512, lr=1e-3)
 trainer = Trainer(test_hp, group='Test')
-trainer.train_step(steps=500, log_interval=10)
-trainer.train_step(steps=5000, log_interval=100)
+trainer.train(steps=500, log_interval=10)
+trainer.train(steps=5000, log_interval=100)
 
 # %%
-trainer.train_step(steps=5000, log_interval=100)
+trainer.train(steps=5000, log_interval=100)
 # %%
 
 group = 'With target uncertainty'
@@ -275,23 +280,40 @@ trainers_tu[0] = [load(group, f) for f in files_s11000 if '_tu0_' in f]
 trainers_tu[0.01] = [load(group, f) for f in files_s11000 if '_tu0.01_' in f]
 trainers_tu[0.1] = [load(group, f) for f in files_s11000 if '_tu0.1_' in f] 
 # %%
-net = trainers_tu[0][0].model
-net.parameters
+
+
+for tu in [0, 0.01, 0.1]:
+    for i in range(3):
+        net = trainers_tu[tu][i].model
+
+        w_in = net.input_layer.weight.data
+        w_1_in = net.hidden_layers[0].layer[0].weight.data
+        w_1_out = net.hidden_layers[0].layer[2].weight.data
+        w_2_in = net.hidden_layers[1].layer[0].weight.data
+        w_2_out = net.hidden_layers[1].layer[2].weight.data
+        w_out = net.output_layer.weight.data
+
+        b_in = net.input_layer.bias.data
+        b_1_in = net.hidden_layers[0].layer[0].bias.data
+        b_1_out = net.hidden_layers[0].layer[2].bias.data
+        b_2_in = net.hidden_layers[1].layer[0].bias.data
+        b_2_out = net.hidden_layers[1].layer[2].bias.data
+        b_out = net.output_layer.bias.data
+
+        inp = torch.eye(6)
+        out_simple = net.output_layer(net.input_layer(inp))
+        out = net.forward(inp)
+
+        plt.plot(out_simple.flatten().detach().cpu().numpy(), 
+                 out.flatten().detach().cpu().numpy(), 
+                 'o',label=f'tu={tu}, run={i}')
+    plt.legend()
+    plt.xlabel('Output/Input Layer Only')
+    plt.ylabel('Full Network')
+    plt.title('Output Comparison')
+    plt.show()
 # %%
-w_in = net.input_layer.weight.data
-w_1_in = net.hidden_layers[0].layer[0].weight.data
-w_1_out = net.hidden_layers[0].layer[2].weight.data
-w_2_in = net.hidden_layers[1].layer[0].weight.data
-w_2_out = net.hidden_layers[1].layer[2].weight.data
-w_out = net.output_layer.weight.data
-
-b_in = net.input_layer.bias.data
-b_1_in = net.hidden_layers[0].layer[0].bias.data
-b_1_out = net.hidden_layers[0].layer[2].bias.data
-b_2_in = net.hidden_layers[1].layer[0].bias.data
-b_2_out = net.hidden_layers[1].layer[2].bias.data
-b_out = net.output_layer.bias.data
 
 
-
+nn.Linear(2, 3).weight.data
 # %%
