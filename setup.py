@@ -54,8 +54,22 @@ class ResNet(nn.Module):
                 count.append((pre_activation > 0).sum().item())
                 x = layer(x)
             return count
-    
+        
+class MLP(nn.Module):
+    def __init__(self, T, D, L):
+        super(MLP, self).__init__()
+        self.input_layer = nn.Linear(T, D)
+        self.hidden_layers = nn.ModuleList([nn.Linear(D, D) for _ in range(L-1)])
+        self.output_layer = nn.Linear(D, T)
 
+    def forward(self, x):
+        x = torch.relu(self.input_layer(x))
+        for layer in self.hidden_layers:
+            x = torch.relu(layer(x))
+        x = self.output_layer(x)
+        return x
+
+    
 class LogicGates(object):
     def __init__(self, T, gtype='mixed'):
         self.T = T
@@ -125,7 +139,7 @@ class LogicGates(object):
         return inputs
 
 class HyperParameters:
-    def __init__(self, T, D, H, L, tu=0, bs=2048, lr=1e-3):
+    def __init__(self, T, D, H, L, tu=0, bs=2048, lr=1e-3, n_type='resnet'):
         self.T = T  # Number of input and output features
         self.D = D  # Hidden dimension
         self.H = H  # Hidden layer dimension
@@ -133,6 +147,7 @@ class HyperParameters:
         self.tu = tu  # Target uncertainty
         self.bs = bs  # Batch size
         self.lr = lr  # Learning rate
+        self.n_type = n_type  # Net type, 'resnet' or 'mlp'
 
 
 
@@ -141,7 +156,12 @@ class HyperParameters:
 class Trainer:
     def __init__(self, hp, group='Test', name=None, project=project_name):
         self.hp = hp # Hyperparameters
-        self.model = ResNet(hp.T, hp.D, hp.H, hp.L)
+
+        if hp.n_type == 'mlp':
+            self.model = MLP(hp.T, hp.D, hp.L)
+        elif hp.n_type == 'resnet':
+            self.model = ResNet(hp.T, hp.D, hp.H, hp.L)
+            
         self.gates = LogicGates(hp.T)
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hp.lr)

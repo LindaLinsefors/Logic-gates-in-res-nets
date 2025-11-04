@@ -36,36 +36,7 @@ trainers_tu[0.1] = [load(group, f) for f in files_s11000 if '_tu0.1_' in f]
 # %%
 
 
-for tu in [0, 0.01, 0.1]:
-    for i in range(3):
-        net = trainers_tu[tu][i].model
 
-        w_in = net.input_layer.weight.data
-        w_1_in = net.hidden_layers[0].layer[0].weight.data
-        w_1_out = net.hidden_layers[0].layer[2].weight.data
-        w_2_in = net.hidden_layers[1].layer[0].weight.data
-        w_2_out = net.hidden_layers[1].layer[2].weight.data
-        w_out = net.output_layer.weight.data
-
-        b_in = net.input_layer.bias.data
-        b_1_in = net.hidden_layers[0].layer[0].bias.data
-        b_1_out = net.hidden_layers[0].layer[2].bias.data
-        b_2_in = net.hidden_layers[1].layer[0].bias.data
-        b_2_out = net.hidden_layers[1].layer[2].bias.data
-        b_out = net.output_layer.bias.data
-
-        inp = torch.eye(6)
-        out_simple = net.output_layer(net.input_layer(inp))
-        out = net.forward(inp)
-
-        plt.plot(out_simple.flatten().detach().cpu().numpy(), 
-                 out.flatten().detach().cpu().numpy(), 
-                 'o',label=f'tu={tu}, run={i}')
-    plt.legend()
-    plt.xlabel('Output/Input Layer Only')
-    plt.ylabel('Full Network')
-    plt.title('Output Comparison')
-    plt.show()
 
 
 
@@ -87,8 +58,35 @@ trainers_tu[0] = [load(group, f) for f in files_s11000 if '_tu0_' in f]
 trainers_tu[0.01] = [load(group, f) for f in files_s11000 if '_tu0.01_' in f]
 trainers_tu[0.1] = [load(group, f) for f in files_s11000 if '_tu0.1_' in f] 
 
+# %%
+# Plot outputs of full network vs input and output layers only
+
+for tu in [0, 0.01, 0.1]:
+    for i in range(3):
+        net = trainers_tu[tu][i].model
+
+        w_in = net.input_layer.weight.data
+        w_out = net.output_layer.weight.data
+
+        b_in = net.input_layer.bias.data
+        b_out = net.output_layer.bias.data
+
+        inp = torch.eye(6)
+        out_simple = net.output_layer(net.input_layer(inp))
+        out = net.forward(inp)
+
+        plt.plot(out_simple.flatten().detach().cpu().numpy(), 
+                 out.flatten().detach().cpu().numpy(), 
+                 'o',label=f'tu={tu}, run={i}')
+    plt.legend()
+    plt.xlabel('Output/Input Layer Only')
+    plt.ylabel('Full Network')
+    plt.title('Output Comparison')
+    plt.show()
+
 
 # %%
+# Plot weight and bias distributions
 
 '''
 w_in = net.input_layer.weight.data
@@ -212,3 +210,38 @@ plt.title('Output Layer Weights Distribution at Step 11000')
 plt.xlabel('Weight Value')
 plt.ylabel('Density')
 plt.show()
+
+# %%
+# Plot logits vs targets for different target uncertainty levels
+
+
+for tu in [0, 0.01, 0.1]:
+    fig, ax = plt.subplots(1, 2, figsize=(12, 5), sharey=True)
+
+    for i in range(3):
+        net = trainers_tu[tu][i].model
+        gates = trainers_tu[tu][i].gates
+
+        inputs = gates.generate_input_data_cuda(2048)
+        with torch.no_grad():
+            targets = gates.forward_cuda(inputs).float()
+
+        outputs = net.forward(inputs.T)
+
+        for j in [0,1]:
+            ax[j].hist(outputs[targets.T==j].detach().cpu(),
+                       bins=5, density=True, alpha=0.5, label=f'run={i}')
+        
+
+    ax[0].set_title(f'Logits Distribution for Target=0, tu={tu}')
+    ax[1].set_title(f'Logits Distribution for Target=1, tu={tu}')
+    for a in ax:
+        a.set_xlabel('Logit Value')
+        a.set_ylabel('Density')
+        a.legend()
+    plt.show()
+
+
+
+
+# %%
