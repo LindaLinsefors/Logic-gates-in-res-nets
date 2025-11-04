@@ -1,9 +1,81 @@
 # %%
+# Import for tu.py
 import torch
 import matplotlib.pyplot as plt
+from setup import list_saves, load, save, Trainer, HyperParameters
 
 
+# %%
 group = 'With target uncertainty'
+for _ in range(3):
+    for tu in [0, 0.01, 0.1]:
+        hp = HyperParameters(T=6, D=6, H=6, L=2, tu=tu, bs=2048, lr=1e-3)
+        trainer = Trainer(hp, group=group)
+        trainer.train(steps=500, log_interval=10)
+        save(trainer)
+        trainer.train(steps=500, log_interval=20)
+        save(trainer)
+        trainer.train(steps=5000, log_interval=50)
+        save(trainer)
+        trainer.train(steps=5000, log_interval=100)
+        save(trainer)
+# %%
+
+
+files = list_saves(group)
+files_s11000 = [f for f in files if '_s11000_' in f]
+for f in files_s11000:
+    print(f)
+
+# %%
+
+trainers_tu = {}
+trainers_tu[0] = [load(group, f) for f in files_s11000 if '_tu0_' in f]
+trainers_tu[0.01] = [load(group, f) for f in files_s11000 if '_tu0.01_' in f]
+trainers_tu[0.1] = [load(group, f) for f in files_s11000 if '_tu0.1_' in f] 
+# %%
+
+
+for tu in [0, 0.01, 0.1]:
+    for i in range(3):
+        net = trainers_tu[tu][i].model
+
+        w_in = net.input_layer.weight.data
+        w_1_in = net.hidden_layers[0].layer[0].weight.data
+        w_1_out = net.hidden_layers[0].layer[2].weight.data
+        w_2_in = net.hidden_layers[1].layer[0].weight.data
+        w_2_out = net.hidden_layers[1].layer[2].weight.data
+        w_out = net.output_layer.weight.data
+
+        b_in = net.input_layer.bias.data
+        b_1_in = net.hidden_layers[0].layer[0].bias.data
+        b_1_out = net.hidden_layers[0].layer[2].bias.data
+        b_2_in = net.hidden_layers[1].layer[0].bias.data
+        b_2_out = net.hidden_layers[1].layer[2].bias.data
+        b_out = net.output_layer.bias.data
+
+        inp = torch.eye(6)
+        out_simple = net.output_layer(net.input_layer(inp))
+        out = net.forward(inp)
+
+        plt.plot(out_simple.flatten().detach().cpu().numpy(), 
+                 out.flatten().detach().cpu().numpy(), 
+                 'o',label=f'tu={tu}, run={i}')
+    plt.legend()
+    plt.xlabel('Output/Input Layer Only')
+    plt.ylabel('Full Network')
+    plt.title('Output Comparison')
+    plt.show()
+
+
+
+
+
+
+
+
+# %%
+# Reload trainers at step 11000
 
 files = list_saves(group)
 files_s11000 = [f for f in files if '_s11000_' in f]
@@ -14,6 +86,9 @@ trainers_tu = {}
 trainers_tu[0] = [load(group, f) for f in files_s11000 if '_tu0_' in f]
 trainers_tu[0.01] = [load(group, f) for f in files_s11000 if '_tu0.01_' in f]
 trainers_tu[0.1] = [load(group, f) for f in files_s11000 if '_tu0.1_' in f] 
+
+
+# %%
 
 '''
 w_in = net.input_layer.weight.data
@@ -31,9 +106,6 @@ b_2_out = net.hidden_layers[1].layer[2].bias.data
 b_out = net.output_layer.bias.data
 '''
 
-
-
-# %%
 for tu in [0, 0.01, 0.1]:
     w_in = [t.model.input_layer.weight.data for t in trainers_tu[tu]]
     w_in = torch.stack(w_in).flatten().cpu().numpy()
