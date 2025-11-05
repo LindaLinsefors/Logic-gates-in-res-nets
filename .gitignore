@@ -4,6 +4,9 @@ wandb/
 # Test outputs and model checkpoints
 Test/
 With target uncertainty/
+And MLP/
+And ResNet/
+And MLP v2/
 *.pt
 *.pth
 *.ckpt

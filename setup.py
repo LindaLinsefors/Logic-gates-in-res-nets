@@ -12,8 +12,8 @@ from line_profiler import LineProfiler, profile
 import numpy as np
 import matplotlib.pyplot as plt
 
-# Set default device
-torch.set_default_device("cuda")
+
+torch.set_default_device("cuda") # Set default device
 
 wandb.login() # Login to wandb
 
@@ -68,10 +68,22 @@ class MLP(nn.Module):
             x = torch.relu(layer(x))
         x = self.output_layer(x)
         return x
+    
+    def active_relu_count(self, x):
+        with torch.no_grad():
+            count = []
+            x = self.input_layer(x)
+            count.append((x > 0).sum().item())
+            x = torch.relu(x)
+            for layer in self.hidden_layers:
+                x = layer(x)
+                count.append((x > 0).sum().item())
+                x = torch.relu(x)
+            return count
 
     
 class LogicGates(object):
-    def __init__(self, T, gtype='mixed'):
+    def __init__(self, T, gtype):
         self.T = T
         self.gtype = gtype
 
@@ -89,6 +101,8 @@ class LogicGates(object):
             self.and_indices = torch.arange(T)
             self.or_indices = torch.tensor([], dtype=torch.int64)
             self.xor_indices = torch.tensor([], dtype=torch.int64)
+
+        self.number_of_and = len(self.and_indices)
 
         self.connections_cuda = self.connections.float()
 
@@ -111,7 +125,7 @@ class LogicGates(object):
     def generate_input_data(self, batch_size):
         inputs = torch.zeros((self.T, batch_size), dtype=torch.int32)
 
-        active_and_outputs = torch.randint(self.T//3, (batch_size,))
+        active_and_outputs = torch.randint(self.number_of_and, (batch_size,))
         one_more_active_input = torch.randint(self.T, (batch_size,))
 
         batch_range = torch.arange(batch_size)
@@ -139,16 +153,20 @@ class LogicGates(object):
         return inputs
 
 class HyperParameters:
-    def __init__(self, T, D, H, L, tu=0, bs=2048, lr=1e-3, n_type='resnet'):
+    def __init__(self, T, D, H, L, 
+                 tu=0, bs=2048, lr=1e-3, 
+                 ntype='resnet', gtype='mixed'):
         self.T = T  # Number of input and output features
         self.D = D  # Hidden dimension
         self.H = H  # Hidden layer dimension
         self.L = L  # Number of residual blocks
+
         self.tu = tu  # Target uncertainty
         self.bs = bs  # Batch size
         self.lr = lr  # Learning rate
-        self.n_type = n_type  # Net type, 'resnet' or 'mlp'
 
+        self.ntype = ntype  # Net type, 'resnet' or 'mlp'
+        self.gtype = gtype  # Logic gate type, 'mixed' or 'and'
 
 
         
@@ -157,19 +175,22 @@ class Trainer:
     def __init__(self, hp, group='Test', name=None, project=project_name):
         self.hp = hp # Hyperparameters
 
-        if hp.n_type == 'mlp':
+        if hp.ntype == 'mlp':
             self.model = MLP(hp.T, hp.D, hp.L)
-        elif hp.n_type == 'resnet':
+        elif hp.ntype == 'resnet':
             self.model = ResNet(hp.T, hp.D, hp.H, hp.L)
-            
-        self.gates = LogicGates(hp.T)
+
+        self.gates = LogicGates(hp.T, hp.gtype)
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hp.lr)
         self.current_step = 0
 
         self.group = group  # Experiment group
         if name is None:
-            self.name = f"T{hp.T}_D{hp.D}_H{hp.H}_L{hp.L}_tu{hp.tu}_bs{hp.bs}_lr{hp.lr}"
+            if hp.H is None:
+                self.name = f"T{hp.T}_D{hp.D}_L{hp.L}_tu{hp.tu}_bs{hp.bs}_lr{hp.lr}"
+            else:
+                self.name = f"T{hp.T}_D{hp.D}_H{hp.H}_L{hp.L}_tu{hp.tu}_bs{hp.bs}_lr{hp.lr}"
         else:
             self.name = name
 
@@ -236,25 +257,5 @@ def load(group, file_name):
 
 
 
-# %%
-# Test
-
-test_hp = HyperParameters(T=16, D=8, H=16, L=2, bs=2048, lr=1e-3)
-trainer_s = Trainer(test_hp, group='Test')
-trainer_s.train(steps=500, log_interval=10)
-group, file_name = save(trainer_s)
-trainer_l = load(group, file_name)
-trainer_l.train(steps=5000, log_interval=100)
-save(trainer_l)
 
 # %%
-test_hp = HyperParameters(T=128, D=64, H=64, L=2, bs=512, lr=1e-3)
-trainer = Trainer(test_hp, group='Test')
-trainer.train(steps=500, log_interval=10)
-trainer.train(steps=5000, log_interval=100)
-
-# %%
-trainer.train(steps=5000, log_interval=100)
-# %%
-
-
