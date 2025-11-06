@@ -190,7 +190,7 @@ plt.show()
 # %%
 # visualizing weight using a heat map
 
-trainer = early
+trainer = new_trainer
 
 w1 = trainer.model.input_layer.weight.data.cpu()
 b1 = trainer.model.input_layer.bias.data.cpu()

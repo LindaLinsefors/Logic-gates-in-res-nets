@@ -140,7 +140,7 @@ class LogicGates(object):
     def generate_input_data_cuda(self, batch_size):
         inputs = torch.zeros((self.T, batch_size))
 
-        active_and_outputs = torch.randint(self.T//3, (batch_size,))
+        active_and_outputs = torch.randint(self.number_of_and, (batch_size,))
         one_more_active_input = torch.randint(self.T, (batch_size,))
 
         batch_range = torch.arange(batch_size)
