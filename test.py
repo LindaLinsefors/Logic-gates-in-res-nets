@@ -1,3 +1,4 @@
+# %%
 # Import for test.py
 import torch
 import matplotlib.pyplot as plt
@@ -15,10 +16,10 @@ trainer_l.train(steps=5000, log_interval=100)
 save(trainer_l)
 
 # %%
-test_hp = HyperParameters(T=128, D=64, H=64, L=2, bs=512, lr=1e-3)
-trainer = Trainer(test_hp, group='Test')
-trainer.train(steps=500, log_interval=10)
-trainer.train(steps=5000, log_interval=100)
+test_hp = HyperParameters(T=200, D=64, H=64, L=2, bs=512, lr=1e-3)
+trainer = Trainer(test_hp, group='Test', name='adam_2')
+trainer.train(steps=50, log_interval=10)
+trainer.train(steps=50, log_interval=10)
 
 # %%
 trainer.train(steps=5000, log_interval=100)

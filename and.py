@@ -17,12 +17,17 @@ torch.set_default_device("cuda") # Set default device
 
 wandb.login() # Login to wandb
 
-group = 'And MLP v2'
-#Fixes from v1:
+group = 'And MLP v4'
+# Fixed in v2:
 # - active_and_outputs are drawn from all and gates, not just T//3
+# Fixed in v3:
+# - include variable nai (number of active inputs) in hyperparameters and file names
+# Fixed in v4:
+# - use AdamW optimizer instead of Adam, adding weight decay hyperparameter wd
+
 
 # %%
-group = 'And MLP'
+
 
 hp = HyperParameters(T=1000, D=100, H=None, L=1, 
                     tu=0, bs=1024//2, lr=3e-2,
@@ -43,26 +48,58 @@ save(trainer)
 
 
 # %%
-for tu in [0.01, 0.1]:
-    for lr in [1e-1, 3e-2, 1e-2, 3e-3, 1e-3]:
-        for bs in [256, 512, 1024, 2048]:
-            hp = HyperParameters(T=1000, D=100, H=None, L=1, 
-                                tu=tu, bs=bs, lr=lr,
-                                ntype = 'mlp', gtype = 'and')
+# Hyperparameter sweep
 
-            trainer = Trainer(hp, group=group)
-            trainer.train(steps=500, log_interval=10)
-            save(trainer)
-            trainer.train(steps=5000, log_interval=100)
-            save(trainer)
-            trainer.train(steps=15000, log_interval=100)
-            save(trainer)
+for wd in [0, 0.01]:
+    for tu in [0, 0.01, 0.1]:
+        for lr in [1e-2, 3e-2, 1e-3]:
+            for bs in [2048, 4096, 8192]:
+                
+                hp = HyperParameters(T=1000, D=100, H=None, L=1, 
+                                    nai=7, tu=tu, 
+                                    bs=bs, lr=lr, wd=wd,
+                                    ntype='mlp', gtype='and')
+
+                trainer = Trainer(hp, group=group)
+                trainer.train(steps=500, log_interval=10)
+                trainer.train(steps=20000, log_interval=100)
+                save(trainer)
+
+# Good values seems to be lr=1e-2, bs=4096 
+# %%
+group = 'And MLP v4 T300'
+
+wd = 0.01
+lr = 3e-3
+bs = 4096
+T = 300
+tu_trainers = {}
+for tu in [0, 0.01, 0.1]:
+    hp = HyperParameters(T=T, D=100, H=None, L=1, 
+                        nai=7, tu=tu, 
+                        bs=bs, lr=lr, wd=wd,
+                        ntype='mlp', gtype='and')
+
+    tu_trainers[tu] = Trainer(hp, group=group)
+
+for trainer in tu_trainers.values():
+    trainer.train(steps=500, log_interval=10)
+    save(trainer)
+    trainer.train(steps=5000, log_interval=100)
+    save(trainer)
+    trainer.train(steps=10000, log_interval=100)
+    save(trainer)
+    trainer.train(steps=15000, log_interval=100)
+    save(trainer)
+    trainer.train(steps=20000, log_interval=100)
+    save(trainer)
+
 # %% ####################################################################
 # Testing how the loss works
 
 
-inputs = trainer.gates.generate_input_data_cuda(trainer.hp.bs)
-targets = trainer.gates.forward_cuda(inputs).float()
+inputs = trainer.gates.generate_input_data(trainer.hp.bs)
+targets = trainer.gates.forward(inputs).float()
 inputs = inputs.float()
 
 if trainer.hp.tu != 0:
@@ -96,8 +133,8 @@ late = load(group, late_name)
 # %%
 
 bs = 1024*4
-inputs = early.gates.generate_input_data_cuda(bs).float()
-targets = early.gates.forward_cuda(inputs).float()
+inputs = early.gates.generate_input_data(bs).float()
+targets = early.gates.forward(inputs).float()
 if early.hp.tu != 0:
     targets = targets * (1 - 2*early.hp.tu) + early.hp.tu
 
@@ -168,7 +205,7 @@ print(f"Late Neuron Activation Frequency Mean: {late_neuron_activation_frequency
 
 for bs in [1024, 2048, 4096, 8192]:
     print(f"Batch Size: {bs}")
-    inputs = early.gates.generate_input_data_cuda(bs).float()
+    inputs = early.gates.generate_input_data(bs).float()
     print(early.model.active_relu_count(inputs.T)[0]/bs)
     print(late.model.active_relu_count(inputs.T)[0]/bs)
 # %%
@@ -262,6 +299,11 @@ new_trainer = Trainer(hp, group=group)
 new_trainer.train(steps=500, log_interval=10)
 save(new_trainer)
 new_trainer.train(steps=5000, log_interval=100)
+save(new_trainer)
+new_trainer.train(steps=15000, log_interval=100)
+save(new_trainer)
+# %%
+new_trainer.train(steps=15000, log_interval=100)
 save(new_trainer)
 new_trainer.train(steps=15000, log_interval=100)
 save(new_trainer)

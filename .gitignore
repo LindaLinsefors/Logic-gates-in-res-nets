@@ -7,6 +7,11 @@ With target uncertainty/
 And MLP/
 And ResNet/
 And MLP v2/
+And MLP v3/
+And MLP v3 sweep/
+And MLP v4/
+And MLP v4 long/
+And MLP v4 T300/
 *.pt
 *.pth
 *.ckpt

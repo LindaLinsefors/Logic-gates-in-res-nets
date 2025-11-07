@@ -90,7 +90,7 @@ class LogicGates(object):
         self.first_inputs = torch.arange(T)
         self.second_inputs = (self.first_inputs + torch.randint(1, T-1, (T,))) % T
 
-        self.connections = torch.eye(T, dtype=torch.int32) #Add first input connections
+        self.connections = torch.eye(T) #Add first input connections
         self.connections[torch.arange(T), self.second_inputs] = 1 #Add second input connections
 
         if gtype == 'mixed':
@@ -103,67 +103,50 @@ class LogicGates(object):
             self.xor_indices = torch.tensor([], dtype=torch.int64)
 
         self.number_of_and = len(self.and_indices)
-
-        self.connections_cuda = self.connections.float()
-
+    
     def forward(self, x):
         x = self.connections @ x
-        output = torch.zeros_like(x, dtype=torch.int32)
-        output[self.and_indices] = (x[self.and_indices]==2).type(torch.int32)
-        output[self.or_indices] = (x[self.or_indices] >= 1).type(torch.int32)
-        output[self.xor_indices] = (x[self.xor_indices]==1).type(torch.int32)
-        return output
-    
-    def forward_cuda(self, x):
-        x = self.connections_cuda @ x
         output = torch.zeros_like(x)
         output[self.and_indices] = (x[self.and_indices]==2).float()
         output[self.or_indices] = (x[self.or_indices] >= 1).float()
         output[self.xor_indices] = (x[self.xor_indices]==1).float()
         return output
 
-    def generate_input_data(self, batch_size):
-        inputs = torch.zeros((self.T, batch_size), dtype=torch.int32)
-
-        active_and_outputs = torch.randint(self.number_of_and, (batch_size,))
-        one_more_active_input = torch.randint(self.T, (batch_size,))
-
-        batch_range = torch.arange(batch_size)
-
-        inputs[active_and_outputs, batch_range] = 1
-        #inputs[self.first_inputs[active_and_outputs], batch_range] = 1 #Same as previous row
-        inputs[self.second_inputs[active_and_outputs], batch_range] = 1
-        inputs[one_more_active_input, batch_range] = 1
-
-        return inputs
     
-    def generate_input_data_cuda(self, batch_size):
+    def generate_input_data(self, batch_size, num_active_inputs):
         inputs = torch.zeros((self.T, batch_size))
-
-        active_and_outputs = torch.randint(self.number_of_and, (batch_size,))
-        one_more_active_input = torch.randint(self.T, (batch_size,))
-
         batch_range = torch.arange(batch_size)
 
-        inputs[active_and_outputs, batch_range] = 1
-        #inputs[self.first_inputs[active_and_outputs], batch_range] = 1 #Same as previous row
-        inputs[self.second_inputs[active_and_outputs], batch_range] = 1
-        inputs[one_more_active_input, batch_range] = 1
+        for _ in range(num_active_inputs//2):
+            active_pairs = torch.randint(self.T, (batch_size,))
+
+            inputs[active_pairs, batch_range] = 1
+            #inputs[self.first_inputs[active_pairs], batch_range] = 1 #Same as previous row
+            inputs[self.second_inputs[active_pairs], batch_range] = 1
+
+        if num_active_inputs % 2 == 1:
+            extra_active = torch.randint(self.T, (batch_size,))
+            inputs[extra_active, batch_range] = 1
 
         return inputs
 
 class HyperParameters:
     def __init__(self, T, D, H, L, 
-                 tu=0, bs=2048, lr=1e-3, 
+                 nai=3, tu=0, 
+                 bs=2048, lr=1e-3, wd=0,
                  ntype='resnet', gtype='mixed'):
+        
         self.T = T  # Number of input and output features
         self.D = D  # Hidden dimension
         self.H = H  # Hidden layer dimension
         self.L = L  # Number of residual blocks
 
+        self.nai = nai  # Number of active inputs
         self.tu = tu  # Target uncertainty
+
         self.bs = bs  # Batch size
         self.lr = lr  # Learning rate
+        self.wd = wd  # Weight decay
 
         self.ntype = ntype  # Net type, 'resnet' or 'mlp'
         self.gtype = gtype  # Logic gate type, 'mixed' or 'and'
@@ -182,15 +165,16 @@ class Trainer:
 
         self.gates = LogicGates(hp.T, hp.gtype)
         self.criterion = nn.BCEWithLogitsLoss()
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=hp.lr)
+        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=hp.lr, weight_decay=hp.wd)
+        #self.optimiser = torch.optim.Adam(self.model.parameters(), lr=hp.lr)
         self.current_step = 0
 
         self.group = group  # Experiment group
         if name is None:
             if hp.H is None:
-                self.name = f"T{hp.T}_D{hp.D}_L{hp.L}_tu{hp.tu}_bs{hp.bs}_lr{hp.lr}"
+                self.name = f"T{hp.T}_D{hp.D}_L{hp.L}_nai{hp.nai}_tu{hp.tu}_bs{hp.bs}_wd{hp.wd}_lr{hp.lr}"
             else:
-                self.name = f"T{hp.T}_D{hp.D}_H{hp.H}_L{hp.L}_tu{hp.tu}_bs{hp.bs}_lr{hp.lr}"
+                self.name = f"T{hp.T}_D{hp.D}_H{hp.H}_L{hp.L}_nai{hp.nai}_tu{hp.tu}_bs{hp.bs}_wd{hp.wd}_lr{hp.lr}"
         else:
             self.name = name
 
@@ -207,9 +191,9 @@ class Trainer:
                         settings=wandb.Settings(silent=True)):
 
             for _ in range(steps):
-                inputs = self.gates.generate_input_data_cuda(self.hp.bs)
-                targets = self.gates.forward_cuda(inputs).float()
-                
+                inputs = self.gates.generate_input_data(self.hp.bs, self.hp.nai)
+                targets = self.gates.forward(inputs).float()
+
                 inputs = inputs.float()
                 if self.hp.tu != 0:
                     targets = targets * (1 - 2*self.hp.tu) + self.hp.tu
