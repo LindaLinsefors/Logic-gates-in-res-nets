@@ -11,7 +11,7 @@ import seaborn as sns
 import numpy as np
 
 importlib.reload(setup)
-from setup import (list_saves, load, save, Trainer, HyperParameters, LogicGates, 
+from setup import (all_ouptupt_featueres_contur_plots, list_saves, load, save, Trainer, HyperParameters, LogicGates, 
                    _show_matrix, show_resnet, combine_linear, show_matrix,
                    ouptupt_featuere_contur_plot, several_ouptupt_featueres_contur_plots)
 
@@ -301,4 +301,28 @@ for f in files:
     trainer = load(group, f)
     several_ouptupt_featueres_contur_plots(trainer, f)
 
+# %%
+for f in files:
+    trainer = load(group, f)
+    title = f'{f}, OR'
+    print(title)
+    all_ouptupt_featueres_contur_plots(trainer, gates='or', title=title)
+# %%
+for f in files:
+    trainer = load(group, f)
+    title = f'{f}, XOR'
+    print(title)
+    all_ouptupt_featueres_contur_plots(trainer, gates='xor', title=title)
+# %%
+
+x = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0])
+y = torch.tensor([2.0, 4.0, 6.0, 8.0, 10.0])
+z = torch.randn(5)
+
+data = torch.stack((x, y, z))
+corr_matrix = torch.corrcoef(data)
+print(corr_matrix)
+print("Correlation:", corr_matrix[0, 1])
+# %%
+data
 # %%

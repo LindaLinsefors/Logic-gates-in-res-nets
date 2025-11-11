@@ -488,3 +488,5 @@ save(trainer)
 # %%
 plot_layer(trainer.model.input_layer)
 # %%
+
+all_ouptupt_featueres_contur_plots(trainer, gates='and', title=None)

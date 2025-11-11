@@ -356,7 +356,7 @@ def combine_linear(layer1, layer2):
 
 
 
-def _ouptupt_featuere_contur_plot(trainer, ouptput_feature):
+def _ouptupt_featuere_contur_plot(trainer, ouptput_feature, text=True):
 
     input_features = [trainer.gates.first_inputs[ouptput_feature].item(), 
                       trainer.gates.second_inputs[ouptput_feature].item()]
@@ -380,9 +380,10 @@ def _ouptupt_featuere_contur_plot(trainer, ouptput_feature):
     contour = plt.contourf(X.cpu(), Y.cpu(), Z.cpu(), levels=50, cmap='viridis') 
 
     plt.colorbar(contour)
-    plt.xlabel('First input')
-    plt.ylabel('Second input')
-    plt.title(f'Logits for output feature {ouptput_feature}')
+    if text:
+        plt.xlabel('First input')
+        plt.ylabel('Second input')
+        plt.title(f'Logits for output feature {ouptput_feature}')
     
 
 def ouptupt_featuere_contur_plot(trainer, ouptput_feature):
@@ -412,6 +413,32 @@ def several_ouptupt_featueres_contur_plots(trainer, title=None):
                 output_feature = trainer.gates.xor_indices[j]
 
             _ouptupt_featuere_contur_plot(trainer, output_feature)
+    plt.tight_layout()
+    plt.show()
+
+def all_ouptupt_featueres_contur_plots(trainer, gates='all', title=None):
+    if gates == 'and':
+        features = trainer.gates.and_indices
+    elif gates == 'or':
+        features = trainer.gates.or_indices
+    elif gates == 'xor':
+        features = trainer.gates.xor_indices
+    else:
+        features = torch.arange(trainer.hp.T)
+
+    n_features = len(features)
+    cols = 6
+    rows = (n_features + cols - 1) // cols
+    fig = plt.figure(figsize=(cols * 5, rows * 4 + 0.5))
+
+    if title is not None:
+        fig.suptitle(title, fontsize=16)
+        #plt.subplots_adjust(top=0.9)
+
+    for idx, output_feature in enumerate(features):
+        plt.subplot(rows, cols, idx + 1)
+        _ouptupt_featuere_contur_plot(trainer, output_feature.item(), text=False)
+    
     plt.tight_layout()
     plt.show()
   
