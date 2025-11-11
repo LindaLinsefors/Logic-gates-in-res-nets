@@ -155,7 +155,7 @@ class HyperParameters:
         
 
 class Trainer:
-    def __init__(self, hp, group='Test', name=None, project=project_name):
+    def __init__(self, hp, group='Test', name=None, project=project_name, gates=None):
         self.hp = hp # Hyperparameters
 
         if hp.ntype == 'mlp':
@@ -163,7 +163,11 @@ class Trainer:
         elif hp.ntype == 'resnet':
             self.model = ResNet(hp.T, hp.D, hp.H, hp.L)
 
-        self.gates = LogicGates(hp.T, hp.gtype)
+        if gates is None:
+            self.gates = LogicGates(hp.T, hp.gtype)
+        else:
+            self.gates = gates
+
         self.criterion = nn.BCEWithLogitsLoss()
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=hp.lr, weight_decay=hp.wd)
         #self.optimiser = torch.optim.Adam(self.model.parameters(), lr=hp.lr)
@@ -239,7 +243,177 @@ def load(group, file_name):
     print(f"Model loaded from {path}")
     return trainer
 
+def positive_bias_mask(layer):
+    b = layer.bias.data
+    return (b > 0)
+
+def plot_layer(layer):
+    w = layer.weight.data
+    b = layer.bias.data
+    nw = w/(b.abs())[:,None]
+    positive_bias = positive_bias_mask(layer)
+
+    plt.figure(figsize=(8,12))
+
+    plt.subplot(3,2,1)
+    plt.hist(w[positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Input weights for neurons with positive bias')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Count')
+
+    plt.subplot(3,2,2)
+    plt.hist(w[~positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Input weights for neurons with negative bias')
+    plt.xlabel('Weight Value')
+    plt.ylabel('Count')
+
+    plt.subplot(3,2,3)
+    plt.hist(b[positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Biases for neurons with positive bias')
+    plt.xlabel('Bias Value')
+    plt.ylabel('Count')
+
+    plt.subplot(3,2,4)
+    plt.hist(b[~positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Biases for neurons with negative bias')
+    plt.xlabel('Bias Value')
+    plt.ylabel('Count')
+
+    plt.subplot(3,2,5)
+    plt.hist(nw[positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Normalized Weights for neurons with positive bias')
+    plt.xlabel('Normalized Weight Value')
+    plt.ylabel('Count') 
+
+    plt.subplot(3,2,6)
+    plt.hist(nw[~positive_bias].cpu().numpy().flatten(), bins=50)
+    plt.title('Normalized Weights for neurons with negative bias')
+    plt.xlabel('Normalized Weight Value')
+    plt.ylabel('Count')
+
+    plt.tight_layout()
+    plt.show()
 
 
+def _show_matrix(matrix, title='Matrix Heatmap', xlabel='Input', ylabel='Output'):
+    sns.heatmap(matrix, cmap='bwr', center=0)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+
+import seaborn as sns
+def show_matrix(matrix, title='Matrix Heatmap', xlabel='Input', ylabel='Output'):
+    _show_matrix(matrix, title, xlabel, ylabel)
+    plt.show()
+
+# %%
+def show_resnet(trainer):
+    net = trainer.model
+    L = trainer.hp.L
+
+    rows = (L + 1) * 2
+    cols = 2
+
+    plt.figure(figsize=(8, rows * 3))
+
+    plt.subplot(rows, cols, 1)
+    in_w = net.input_layer.weight.data.cpu().numpy()
+    _show_matrix(in_w.T, title='Input Layer Weights', xlabel='Residual', ylabel='Input')
+    plt.subplot(rows, cols, 2)
+    in_b = net.input_layer.bias.data.cpu().numpy()
+    _show_matrix(in_b.reshape(1, -1), title='Input Layer Biases', xlabel='Residual', ylabel='Bias')
+
+    for l in range(L):
+        plt.subplot(rows, cols, 2*(l+1)+1)
+        h_in_w = net.hidden_layers[l].layer[0].weight.data.cpu().numpy()
+        _show_matrix(h_in_w, title=f'Residual Block {l+1} Input Weights', xlabel='Residual', ylabel='Hidden') 
+        plt.subplot(rows, cols, 2*(l+1)+2)
+        h_in_b = net.hidden_layers[l].layer[0].bias.data.cpu().numpy()
+        _show_matrix(h_in_b.reshape(-1, 1), title=f'Residual Block {l+1} Input Biases', xlabel='Bias', ylabel='Hidden')
+
+        plt.subplot(rows, cols, 2*(L + l +1)+1)
+        h_out_w = net.hidden_layers[l].layer[2].weight.data.cpu().numpy()
+        _show_matrix(h_out_w.T, title=f'Residual Block {l+1} Output Weights', xlabel='Residual', ylabel='Hidden')
+        plt.subplot(rows, cols, 2*(L + l +1)+2)
+        h_out_b = net.hidden_layers[l].layer[2].bias.data.cpu().numpy()
+        _show_matrix(h_out_b.reshape(1, -1), title=f'Residual Block {l+1} Output Biases', xlabel='Residual', ylabel='Bias')
+
+    plt.subplot(rows, cols, rows*cols -1)
+    out_w = net.output_layer.weight.data.cpu().numpy()
+    _show_matrix(out_w, title='Output Layer Weights', xlabel='Residual', ylabel='Output')
+    plt.subplot(rows, cols, rows*cols)
+    out_b = net.output_layer.bias.data.cpu().numpy()
+    _show_matrix(out_b.reshape(-1, 1), title='Output Layer Biases', xlabel='Bias', ylabel='Output')
+
+    plt.tight_layout()
+    plt.show()
+
+def combine_linear(layer1, layer2):
+    combined_layer = nn.Linear(layer1.in_features, layer2.out_features)
+    combined_layer.weight.data = layer2.weight.data @ layer1.weight.data
+    combined_layer.bias.data = layer2.weight.data @ layer1.bias.data + layer2.bias.data
+    return combined_layer
+
+
+
+def _ouptupt_featuere_contur_plot(trainer, ouptput_feature):
+
+    input_features = [trainer.gates.first_inputs[ouptput_feature].item(), 
+                      trainer.gates.second_inputs[ouptput_feature].item()]
+    
+    x = torch.linspace(0, 1, 100)
+    y = torch.linspace(0, 1, 100)
+    X, Y = torch.meshgrid(x, y, indexing='ij')
+
+    inputs = torch.zeros(100, 100, trainer.hp.T)
+    inputs[:, :, input_features[0]] = X
+    inputs[:, :, input_features[1]] = Y
+
+    with torch.no_grad():
+        #outputs = trainer.model(inputs.reshape(-1, T))
+        #Z = outputs[:, ouptput_feature].reshape(100, 100)
+
+        outputs = trainer.model(inputs)
+        Z = outputs[:, :, ouptput_feature]
+
+    
+    contour = plt.contourf(X.cpu(), Y.cpu(), Z.cpu(), levels=50, cmap='viridis') 
+
+    plt.colorbar(contour)
+    plt.xlabel('First input')
+    plt.ylabel('Second input')
+    plt.title(f'Logits for output feature {ouptput_feature}')
+    
+
+def ouptupt_featuere_contur_plot(trainer, ouptput_feature):
+    plt.figure(figsize=(8, 6))
+    _ouptupt_featuere_contur_plot(trainer, ouptput_feature)
+    plt.show()
+
+
+def several_ouptupt_featueres_contur_plots(trainer, title=None):
+    rows = 3
+    cols = 4
+    fig = plt.figure(figsize=(cols * 5, rows * 4 + 0.5))
+
+    if title is not None:
+        fig.suptitle(title, fontsize=16)
+        #plt.subplots_adjust(top=0.9)
+
+    for i in range(rows):
+        for j in range(cols):
+            plt.subplot(rows, cols, i * cols + j + 1)
+            
+            if i==0:
+                output_feature = trainer.gates.and_indices[j]
+            elif i==1:
+                output_feature = trainer.gates.or_indices[j]
+            else:
+                output_feature = trainer.gates.xor_indices[j]
+
+            _ouptupt_featuere_contur_plot(trainer, output_feature)
+    plt.tight_layout()
+    plt.show()
+  
 
 # %%

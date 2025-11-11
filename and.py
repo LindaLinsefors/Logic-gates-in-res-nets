@@ -70,29 +70,30 @@ for wd in [0, 0.01]:
 group = 'And MLP v4 T300'
 
 wd = 0.01
-lr = 3e-3
 bs = 4096
 T = 300
+nai = 3
 tu_trainers = {}
 for tu in [0, 0.01, 0.1]:
-    hp = HyperParameters(T=T, D=100, H=None, L=1, 
-                        nai=7, tu=tu, 
-                        bs=bs, lr=lr, wd=wd,
-                        ntype='mlp', gtype='and')
+    for lr in [1e-2, 1e-3]:
+        hp = HyperParameters(T=T, D=100, H=None, L=1, 
+                            nai=nai, tu=tu, 
+                            bs=bs, lr=lr, wd=wd,
+                            ntype='mlp', gtype='and')
 
-    tu_trainers[tu] = Trainer(hp, group=group)
+        trainer = Trainer(hp, group=group)
 
-for trainer in tu_trainers.values():
-    trainer.train(steps=500, log_interval=10)
-    save(trainer)
-    trainer.train(steps=5000, log_interval=100)
-    save(trainer)
-    trainer.train(steps=10000, log_interval=100)
-    save(trainer)
-    trainer.train(steps=15000, log_interval=100)
-    save(trainer)
-    trainer.train(steps=20000, log_interval=100)
-    save(trainer)
+
+        trainer.train(steps=500, log_interval=10)
+        save(trainer)
+        trainer.train(steps=5000, log_interval=100)
+        save(trainer)
+        trainer.train(steps=15000, log_interval=100)
+        save(trainer)
+        trainer.train(steps=15000, log_interval=100)
+        save(trainer)
+
+
 
 # %% ####################################################################
 # Testing how the loss works
@@ -307,4 +308,183 @@ new_trainer.train(steps=15000, log_interval=100)
 save(new_trainer)
 new_trainer.train(steps=15000, log_interval=100)
 save(new_trainer)
+
+
+# %% ######################################################
+# Investigating T1000_D100_L1_nai7_tu0_bs4096_wd0.01_lr0.001
+group = 'And MLP v4 long'
+print(group + ':')
+files = list_saves(group)
+files = [f for f in files if 'T1000_D100_L1_nai7_tu0_bs4096' in f and 'lr0.001' in f]
+for f in files:
+    print(f)    
+
+# %%
+# Load trainers
+trainers = [load(group, f) for f in files]
+# Sort by current step
+trainers.sort(key=lambda x: x.current_step)
+# %%
+for trainer in trainers:
+    print(f"{trainer.name}, step:{trainer.current_step}")
+# %%
+
+bins = torch.linspace(0, 1, steps=150).cpu()
+bs = 4096*16
+t = trainers[0]
+inputs = t.gates.generate_input_data(bs, t.hp.nai).float()
+with torch.no_grad():
+    for t in trainers:
+        active_neurons = t.model.input_layer.forward(inputs.T) > 0
+        neuron_activation_frequency = active_neurons.sum(dim=0) / bs
+        plt.hist(neuron_activation_frequency.cpu().numpy(), 
+                 bins=bins, alpha=0.5, density=True,
+                 label=f'Steps = {t.current_step}')
+    
+    plt.legend()
+    plt.title('Neuron Activation Frequency')
+    plt.show()
+# %%
+
+for t in trainers:
+    plt.hist(t.model.input_layer.bias.data.cpu(), 
+             bins=20, alpha=0.5, 
+             label=f'Steps = {t.current_step}', density=True)
+plt.legend()
+plt.title('Neuron Bias Distribution')
+plt.show()
+
+
+# %%
+for t in trainers:
+    w1 = t.model.input_layer.weight.data.cpu()
+    b1 = t.model.input_layer.bias.data.cpu()
+    nw1 = w1 / (-b1)[:, None]
+    plt.hist(w1.flatten(), 
+             bins=50, alpha=0.5, 
+             label=f'Steps = {t.current_step}', density=True)
+plt.legend()
+plt.title('Neuron Weight Distribution')
+plt.show()
+
+# %%
+for t in trainers:
+    if t.current_step in [500, 15500, 50500]:
+        w1 = t.model.input_layer.weight.data.cpu()
+        b1 = t.model.input_layer.bias.data.cpu()
+        nw1 = w1 / (b1)[:, None]
+        plt.hist(nw1.flatten(), 
+                bins=50, alpha=0.5, 
+                label=f'Steps = {t.current_step}', density=True)
+plt.legend()
+plt.title('Neuron Weight Distribution')
+plt.show()
+# %%
+# Investigating 
+# T1000_D100_L1_nai7_tu0_bs4096_wd0_lr0.01
+# and
+# T1000_D100_L1_nai7_tu0_bs4096_wd0_lr0.03
+
+group = 'And MLP v4'
+files = list_saves(group)
+files = [f for f in files if 'T1000_D100_L1_nai7_tu0_bs4096_wd0_' in f ]
+for f in files:
+    print(f)
+# %%
+trainers = [load(group, 'T1000_D100_L1_nai7_tu0_bs4096_wd0_lr0.01_s20500_vu8l8c5r'),
+            load(group, 'T1000_D100_L1_nai7_tu0_bs4096_wd0_lr0.03_s20500_0wyj528f')]
+# %%
+
+for t in trainers:
+    plt.hist(t.model.input_layer.bias.data.cpu(), 
+             bins=20, alpha=0.5, 
+             label=f'lr = {t.hp.lr}', density=True)
+plt.legend()
+plt.title('Neuron Bias Distribution')
+plt.show()
+
+
+# %%
+for t in trainers:
+    w1 = t.model.input_layer.weight.data.cpu()
+    plt.hist(w1.flatten(), 
+             bins=50, alpha=0.5, 
+             label=f'lr = {t.hp.lr}', density=True)
+plt.legend()
+plt.title('Neuron Weight Distribution')
+plt.show()
+
+# %%
+for t in trainers:
+        w1 = t.model.input_layer.weight.data.cpu()
+        b1 = t.model.input_layer.bias.data.cpu()
+        nw1 = w1 / (b1.abs())[:, None]
+        plt.hist(nw1.flatten(), 
+                bins=50, alpha=0.5, 
+                label=f'lr = {t.hp.lr}', density=True)
+plt.legend()
+plt.title('Neuron Weight Distribution')
+plt.show()
+# %%
+
+trainer = load(group, 'T1000_D100_L1_nai7_tu0_bs4096_wd0_lr0.01_s20500_vu8l8c5r')
+# %%
+trainer.train(steps=10000, log_interval=100)
+save(trainer)
+trainer.train(steps=10000, log_interval=100)
+save(trainer)
+trainer.train(steps=10000, log_interval=100)
+save(trainer)
+
+# %%
+group = 'And MLP v4 long'
+files = list_saves(group)
+files = [f for f in files if 'T1000_D100_L1_nai7_tu0_bs4096_wd0.01_lr0.01' in f ]
+for f in files:
+    print(f)
+
+trainer = load(group, 'T1000_D100_L1_nai7_tu0_bs4096_wd0.01_lr0.01_s50500_ddvartfc')
+# %%
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+# %%
+plot_layer(trainer.model.input_layer)
+# %%
+layer = trainer.model.input_layer
+w = layer.weight.data
+b = layer.bias.data
+positive_bias = positive_bias_mask(layer)
+plt.hist(w[positive_bias].cpu().numpy().flatten(), 
+            bins=50, alpha=0.5, density=True, label='Positive Bias')
+plt.hist(w[~positive_bias].cpu().numpy().flatten(), 
+            bins=50, alpha=0.5, density=True, label='Non-positive Bias')
+plt.legend()
+plt.title('Weight Distribution')
+plt.xlabel('Weight Value')
+plt.ylabel('Density')
+plt.show()
+# %%
+
+
+group = 'And MLP v4 long'
+files = list_saves(group)
+files = [f for f in files if 'T1000_D100_L1_nai7_tu0.1_bs4096_wd0.01_lr0.01' in f ]
+for f in files:
+    print(f)
+trainer = load(group, 'T1000_D100_L1_nai7_tu0.1_bs4096_wd0.01_lr0.01_s50500_lfk2jgdp')
+plot_layer(trainer.model.input_layer)
+# %%
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+trainer.train(steps=20000, log_interval=100)
+save(trainer)
+
+# %%
+plot_layer(trainer.model.input_layer)
 # %%
