@@ -1,5 +1,5 @@
 # %%
-# Setup for and.py
+# Setup for res_L1.py
 
 import torch
 import torch.nn as nn
@@ -159,65 +159,12 @@ with torch.no_grad():
 
 
 # %%
-def show_resnet_L1(trainer):
-    with torch.no_grad():
-        direct = combine_linear(trainer.model.input_layer, trainer.model.output_layer)
-        h_in = combine_linear(trainer.model.input_layer, trainer.model.hidden_layers[0].layer[0])
-        h_out = combine_linear(trainer.model.hidden_layers[0].layer[2], trainer.model.output_layer)
 
-        rows = 3
-        cols = 2
-        plt.figure(figsize=(8, rows * 3))
-
-        plt.subplot(rows, cols, 1)
-        d_w = direct.weight.data.cpu().numpy()
-        _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
-        plt.subplot(rows, cols, 2)
-        d_b = direct.bias.data.cpu().numpy()
-        _show_matrix(d_b.reshape(1, -1), title='Direct Biases', xlabel='Input', ylabel='Output')
-
-        plt.subplot(rows, cols, 3)
-        h_in_w = h_in.weight.data.cpu().numpy()
-        _show_matrix(h_in_w, title='Hidden Layer Input Combined Weights', xlabel='Input', ylabel='Hidden')
-        plt.subplot(rows, cols, 4)
-        h_in_b = h_in.bias.data.cpu().numpy()
-        _show_matrix(h_in_b.reshape(1, -1), title='Hidden Layer Input Combined Biases', xlabel='Input', ylabel='Hidden')
-        plt.subplot(rows, cols, 5)
-        h_out_w = h_out.weight.data.cpu().numpy()
-        _show_matrix(h_out_w, title='Hidden Layer Output Combined Weights', xlabel='Hidden', ylabel='Output')
-        plt.subplot(rows, cols, 6)
-        h_out_b = h_out.bias.data.cpu().numpy()
-        _show_matrix(h_out_b.reshape(1, -1), title='Hidden Layer Output Combined Biases', xlabel='Hidden', ylabel='Output') 
-        plt.tight_layout()
-        plt.show()
         
 show_resnet_L1(trainer)
 
 # %%
-def show_direct(trainer, weights_only=False):
-    with torch.no_grad():
-        direct = combine_linear(trainer.model.input_layer, trainer.model.output_layer)
 
-        if weights_only:
-            plt.figure(figsize=(20, 20))
-            d_w = direct.weight.data.cpu().numpy()
-            _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
-            plt.show()
-
-        else:
-            rows = 2
-            cols = 1
-            plt.figure(figsize=(8, 12))
-
-            plt.subplot(rows, cols, 1)
-            d_w = direct.weight.data.cpu().numpy()
-            _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
-            plt.subplot(rows, cols, 2)
-            d_b = direct.bias.data.cpu().numpy()
-            _show_matrix(d_b.reshape(1, -1), title='Direct Biases', xlabel='Input', ylabel='Output')
-
-            plt.tight_layout()
-            plt.show()
 
 show_direct(trainer, weights_only=True)
 # %%

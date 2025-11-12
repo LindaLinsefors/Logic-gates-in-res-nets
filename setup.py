@@ -11,6 +11,7 @@ import wandb
 from line_profiler import LineProfiler, profile
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 
 torch.set_default_device("cuda") # Set default device
@@ -253,10 +254,13 @@ def load(group, file_name):
     print(f"Model loaded from {path}")
     return trainer
 
+# generate a mask for neurons with positive bias
 def positive_bias_mask(layer):
     b = layer.bias.data
     return (b > 0)
 
+# Histograms of weights and biases in a layer, 
+# separated for neurons with positive and negative bias
 def plot_layer(layer):
     w = layer.weight.data
     b = layer.bias.data
@@ -304,7 +308,7 @@ def plot_layer(layer):
     plt.tight_layout()
     plt.show()
 
-
+# Plot heatmap of a matrix
 def _show_matrix(matrix, title='Matrix Heatmap', xlabel='Input', ylabel='Output'):
     sns.heatmap(matrix, cmap='bwr', center=0)
     plt.title(title)
@@ -316,7 +320,7 @@ def show_matrix(matrix, title='Matrix Heatmap', xlabel='Input', ylabel='Output')
     _show_matrix(matrix, title, xlabel, ylabel)
     plt.show()
 
-
+# Vissualise all weights and biases in a ResNet
 def show_resnet(trainer):
     net = trainer.model
     L = trainer.hp.L
@@ -358,14 +362,79 @@ def show_resnet(trainer):
     plt.tight_layout()
     plt.show()
 
+# Combine two linear transformations into one
 def combine_linear(layer1, layer2):
     combined_layer = nn.Linear(layer1.in_features, layer2.out_features)
     combined_layer.weight.data = layer2.weight.data @ layer1.weight.data
     combined_layer.bias.data = layer2.weight.data @ layer1.bias.data + layer2.bias.data
     return combined_layer
 
+# Vissualise the effective weights and biases, 
+# for the direct path from input to output, 
+# skipping all hidden layers
+def show_direct(trainer, weights_only=False):
+    with torch.no_grad():
+        direct = combine_linear(trainer.model.input_layer, trainer.model.output_layer)
+
+        if weights_only:
+            plt.figure(figsize=(20, 20))
+            d_w = direct.weight.data.cpu().numpy()
+            _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
+            plt.show()
+
+        else:
+            rows = 2
+            cols = 1
+            plt.figure(figsize=(8, 12))
+
+            plt.subplot(rows, cols, 1)
+            d_w = direct.weight.data.cpu().numpy()
+            _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
+            plt.subplot(rows, cols, 2)
+            d_b = direct.bias.data.cpu().numpy()
+            _show_matrix(d_b.reshape(1, -1), title='Direct Biases', xlabel='Input', ylabel='Output')
+
+            plt.tight_layout()
+            plt.show()
 
 
+# Vissualise the effective weights and biases,
+# for the paths from input to hidden layer, and from hidden layer to output
+def show_resnet_L1(trainer):
+    with torch.no_grad():
+        direct = combine_linear(trainer.model.input_layer, trainer.model.output_layer)
+        h_in = combine_linear(trainer.model.input_layer, trainer.model.hidden_layers[0].layer[0])
+        h_out = combine_linear(trainer.model.hidden_layers[0].layer[2], trainer.model.output_layer)
+
+        rows = 3
+        cols = 2
+        plt.figure(figsize=(8, rows * 3))
+
+        plt.subplot(rows, cols, 1)
+        d_w = direct.weight.data.cpu().numpy()
+        _show_matrix(d_w, title='Direct Weights', xlabel='Input', ylabel='Output')
+        plt.subplot(rows, cols, 2)
+        d_b = direct.bias.data.cpu().numpy()
+        _show_matrix(d_b.reshape(1, -1), title='Direct Biases', xlabel='Input', ylabel='Output')
+
+        plt.subplot(rows, cols, 3)
+        h_in_w = h_in.weight.data.cpu().numpy()
+        _show_matrix(h_in_w, title='Hidden Layer Input Combined Weights', xlabel='Input', ylabel='Hidden')
+        plt.subplot(rows, cols, 4)
+        h_in_b = h_in.bias.data.cpu().numpy()
+        _show_matrix(h_in_b.reshape(1, -1), title='Hidden Layer Input Combined Biases', xlabel='Input', ylabel='Hidden')
+        plt.subplot(rows, cols, 5)
+        h_out_w = h_out.weight.data.cpu().numpy()
+        _show_matrix(h_out_w, title='Hidden Layer Output Combined Weights', xlabel='Hidden', ylabel='Output')
+        plt.subplot(rows, cols, 6)
+        h_out_b = h_out.bias.data.cpu().numpy()
+        _show_matrix(h_out_b.reshape(1, -1), title='Hidden Layer Output Combined Biases', xlabel='Hidden', ylabel='Output') 
+        plt.tight_layout()
+        plt.show()
+
+
+# For any output feature, plot the output logits as a function 
+# of the two input features it depends on
 def _ouptupt_featuere_contur_plot(trainer, ouptput_feature, text=True):
 
     input_features = [trainer.gates.first_inputs[ouptput_feature].item(), 
@@ -395,13 +464,13 @@ def _ouptupt_featuere_contur_plot(trainer, ouptput_feature, text=True):
         plt.ylabel('Second input')
         plt.title(f'Logits for output feature {ouptput_feature}')
     
-
+# Show the above for one ouptput feature
 def ouptupt_featuere_contur_plot(trainer, ouptput_feature):
     plt.figure(figsize=(8, 6))
     _ouptupt_featuere_contur_plot(trainer, ouptput_feature)
     plt.show()
 
-
+# Show the above for 12 output features (4 AND, 4 OR, 4 XOR)
 def several_ouptupt_featueres_contur_plots(trainer, title=None):
     rows = 3
     cols = 4
@@ -426,6 +495,7 @@ def several_ouptupt_featueres_contur_plots(trainer, title=None):
     plt.tight_layout()
     plt.show()
 
+# Show the above for all output features (of one type)
 def all_ouptupt_featueres_contur_plots(trainer, gates='all', title=None):
     if gates == 'and':
         features = trainer.gates.and_indices
@@ -452,6 +522,7 @@ def all_ouptupt_featueres_contur_plots(trainer, gates='all', title=None):
     plt.tight_layout()
     plt.show()
   
+# Compute correlation between one variable and several other variables
 def one_to_many_corr(one, many):
     one = one - one.mean(dim=0)
     many = many - many.mean(dim=0)
@@ -464,7 +535,7 @@ def one_to_many_corr(one, many):
     r = cov / (one_std * many_std)
     return r
 
-
+# Compute correlation between several variables and sevleral (other) variables
 def many_to_many_corr(many1, many2):
     many1 = many1 - many1.mean(dim=0)
     many2 = many2 - many2.mean(dim=0)
