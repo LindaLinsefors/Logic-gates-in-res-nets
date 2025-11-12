@@ -55,6 +55,16 @@ class ResNet(nn.Module):
                 x = layer(x)
             return count
         
+def get_active_relus(trainer, x):
+    with torch.no_grad():
+        x = trainer.model.input_layer(x)
+        active_relus = []
+        for layer in trainer.model.hidden_layers:
+            pre_activation = layer.layer[0](x)
+            active_relus.append(pre_activation > 0)
+            x = layer(x)
+        return active_relus
+        
 class MLP(nn.Module):
     def __init__(self, T, D, L):
         super(MLP, self).__init__()
@@ -306,7 +316,7 @@ def show_matrix(matrix, title='Matrix Heatmap', xlabel='Input', ylabel='Output')
     _show_matrix(matrix, title, xlabel, ylabel)
     plt.show()
 
-# %%
+
 def show_resnet(trainer):
     net = trainer.model
     L = trainer.hp.L
@@ -442,5 +452,29 @@ def all_ouptupt_featueres_contur_plots(trainer, gates='all', title=None):
     plt.tight_layout()
     plt.show()
   
+def one_to_many_corr(one, many):
+    one = one - one.mean(dim=0)
+    many = many - many.mean(dim=0)
+
+    cov = (one[:, None] * many[:, :]).mean(dim=0)
+
+    one_std = (one**2).mean(dim=0)**0.5
+    many_std = (many**2).mean(dim=0)**0.5
+
+    r = cov / (one_std * many_std)
+    return r
+
+
+def many_to_many_corr(many1, many2):
+    many1 = many1 - many1.mean(dim=0)
+    many2 = many2 - many2.mean(dim=0)
+    bs = many1.shape[0]
+
+    cov = torch.einsum('bi,bj->ij', many1, many2) / bs
+    many1_std = (many1**2).mean(dim=0)**0.5
+    many2_std = (many2**2).mean(dim=0)**0.5
+
+    r = cov / (many1_std[:, None] * many2_std[None, :])
+    return r
 
 # %%

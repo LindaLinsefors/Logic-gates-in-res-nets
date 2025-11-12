@@ -11,7 +11,7 @@ import seaborn as sns
 import numpy as np
 
 importlib.reload(setup)
-from setup import (all_ouptupt_featueres_contur_plots, list_saves, load, save, Trainer, HyperParameters, LogicGates, 
+from setup import (ResNet, all_ouptupt_featueres_contur_plots, list_saves, load, save, Trainer, HyperParameters, LogicGates, 
                    _show_matrix, show_resnet, combine_linear, show_matrix,
                    ouptupt_featuere_contur_plot, several_ouptupt_featueres_contur_plots)
 
@@ -292,7 +292,7 @@ trainer.name
 # %%
 
 files = list_saves(group)
-files = [f for f in files if 'lr0.001_s35500_' in f and 'T1000_D600_H1800' in f]
+files = [f for f in files if 'lr0.001_s35500_' in f and 'T1000_D600_H600' in f]
 for f in files:
     print(f)
 
@@ -325,4 +325,96 @@ print(corr_matrix)
 print("Correlation:", corr_matrix[0, 1])
 # %%
 data
+# %%
+files = list_saves(group)
+files = [f for f in files if 'lr0.001_s35500_' in f and 'T1000_D600_H600' in f]
+
+
+for f in files:
+    print(f)
+    trainer = load(group, f)
+
+    #input = trainer.gates.generate_input_data(trainer.hp.bs*32, trainer.hp.nai)
+    input = torch.eye(trainer.hp.T)
+    target = trainer.gates.forward(input)
+    active_relus = get_active_relus(trainer, input.T)[0].float()
+    with torch.no_grad():
+        output = trainer.model(input.T)
+
+    corr = one_to_many_corr(target[-1], active_relus)
+
+    plt.hist(corr.cpu().numpy(), bins=50)
+    plt.ylim(0, 100)
+    plt.show()
+
+# %%
+f = 'T1000_D600_H600_L1_nai5_tu0.1_bs4096_wd0.01_lr0.001_s35500_o1vnmzjm'
+#input = torch.eye(trainer.hp.T)
+input = trainer.gates.generate_input_data(trainer.hp.bs*32, trainer.hp.nai)
+target = trainer.gates.forward(input)
+active_relus = get_active_relus(trainer, input.T)[0].float()
+with torch.no_grad():
+    output = trainer.model(input.T)
+# %%
+
+corr = one_to_many_corr(target[-15], active_relus)
+
+plt.hist(corr.cpu().numpy(), bins=100)
+plt.ylim(0, 20)
+plt.axvline(x=0.07, color='r', linestyle='dashed', linewidth=1)
+plt.axvline(x=-0.07, color='r', linestyle='dashed', linewidth=1)
+plt.show()
+# %%
+
+corr = many_to_many_corr(target.T, active_relus)
+
+
+# %%
+plt.figure(figsize=(8*5, 6*5))
+sns.heatmap(corr[:100,:100].cpu().numpy(), cmap='bwr', center=0)
+plt.title('Correlation Matrix of Active ReLUs')
+plt.xlabel('Ouptput')
+plt.ylabel('ReLU Neuron')
+plt.show()
+# %%
+
+one = torch.tensor([1,1,0,0.])
+many = torch.tensor([[1,1,0,0.], [1,0,1,0.], [0,0,1,1.]]).T
+one_to_many_corr(one, many)
+# %%
+
+
+T = 80
+D = 50
+H = 100
+gates = LogicGates(T, 'mixed')
+
+for tu in [0, 0.01, 0.1]:
+    for H in [100, 200]:
+        hp = HyperParameters(T=T, D=D, H=H, L=1, nai=3, tu=tu,
+                            bs=2048, lr=0.001, wd=0.01, ntype='resnet', gtype='mixed')
+        trainer = Trainer(hp, group=group, gates=gates)
+        trainer.train(steps=500, log_interval=10)
+        save(trainer)
+        trainer.train(steps=5000, log_interval=100)
+        save(trainer)
+        trainer.train(steps=15000, log_interval=100)
+        save(trainer)
+        trainer.train(steps=15000, log_interval=100)
+        save(trainer)
+# %%
+
+files = list_saves(group)
+files = [f for f in files if 'T80_' in f and '_tu0_' in f and '_s35500_' in f]
+for f in files:
+    print(f)
+    trainer = load(group, f)
+    trainer.train(steps=15000, log_interval=100)
+    save(trainer)
+    trainer.train(steps=15000, log_interval=100)
+    save(trainer)
+
+
+
+
 # %%
